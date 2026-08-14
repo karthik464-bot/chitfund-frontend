@@ -13,3 +13,4 @@ A modern React-based web dashboard for managing chit fund groups, scheme schedul
 1. **Clone the repository:**
    ```bash
    git clone https://github.com/karthik464-bot/chitfund-frontend.git
+```
