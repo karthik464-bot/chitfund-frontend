@@ -57,11 +57,14 @@ export default function ChitGroupManagement() {
       const res = await API.get(`/groups?search=${query}`);
       setGroups(res.data);
     } catch (err) {
+      console.error('Fetch groups error:', err);
       setMessage({ type: 'error', text: 'Failed to fetch groups.' });
     }
   };
 
-  useEffect(() => { fetchGroups(); }, []);
+  useEffect(() => { 
+    fetchGroups(); 
+  }, []);
 
   const handleSearch = (e) => {
     setSearch(e.target.value);
@@ -107,10 +110,10 @@ export default function ChitGroupManagement() {
     const computedEnd = group.endDate || calculateEndDate(group.startDate, group.durationMonths);
 
     setFormData({
-      templateName: group.groupName,
-      schemeAmount: group.chitAmount,
-      numberOfInstallment: group.durationMonths,
-      totalMembers: group.numberOfMembers,
+      templateName: group.groupName || '',
+      schemeAmount: group.chitAmount || '',
+      numberOfInstallment: group.durationMonths || '',
+      totalMembers: group.numberOfMembers || '',
       commission: '5',
       startDate: group.startDate || new Date().toISOString().split('T')[0],
       endDate: computedEnd !== '-' ? computedEnd : ''
@@ -175,7 +178,12 @@ export default function ChitGroupManagement() {
       fetchGroups();
       resetForm();
     } catch (err) {
-      setMessage({ type: 'error', text: 'Error saving chit group template.' });
+      console.error('Save group error:', err);
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        setMessage({ type: 'error', text: 'Unauthorized request. Please log in as Admin.' });
+      } else {
+        setMessage({ type: 'error', text: 'Error saving chit group template.' });
+      }
     }
   };
 
@@ -184,10 +192,10 @@ export default function ChitGroupManagement() {
     const computedEnd = group.endDate || calculateEndDate(group.startDate, group.durationMonths);
 
     setFormData({
-      templateName: group.groupName,
-      schemeAmount: group.chitAmount,
-      numberOfInstallment: group.durationMonths,
-      totalMembers: group.numberOfMembers,
+      templateName: group.groupName || '',
+      schemeAmount: group.chitAmount || '',
+      numberOfInstallment: group.durationMonths || '',
+      totalMembers: group.numberOfMembers || '',
       commission: '5',
       startDate: group.startDate || new Date().toISOString().split('T')[0],
       endDate: computedEnd !== '-' ? computedEnd : ''
@@ -198,10 +206,21 @@ export default function ChitGroupManagement() {
   };
 
   const handleDelete = async (id) => {
-    if (window.confirm('Delete this Chit Group?')) {
+    if (!window.confirm('Are you sure you want to delete this group?')) {
+      return;
+    }
+
+    try {
       await API.delete(`/groups/${id}`);
-      setMessage({ type: 'success', text: 'Group deleted.' });
+      setMessage({ type: 'success', text: 'Chit group deleted successfully!' });
       fetchGroups();
+    } catch (err) {
+      console.error('Delete group error:', err);
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        setMessage({ type: 'error', text: 'Session expired or unauthorized. Please re-login as Admin.' });
+      } else {
+        setMessage({ type: 'error', text: 'Failed to delete chit group. Ensure it is not linked to active auctions or collections.' });
+      }
     }
   };
 
@@ -222,7 +241,7 @@ export default function ChitGroupManagement() {
 
   return (
     <div className="module-container">
-      <h2>Module 1: Chit Group Management</h2>
+      <h2>Chit Group Management</h2>
       {message.text && <div className={`alert ${message.type}`}>{message.text}</div>}
 
       {/* Template Creation / Edit Form */}

@@ -1,73 +1,67 @@
-import React, { useEffect, useState } from 'react';
-import API from '../api';
+import React, { useState, useEffect } from 'react';
+import api from '../api';
 
 export default function Dashboard() {
-  const [stats, setStats] = useState(null);
+  const [stats, setStats] = useState({
+    activeGroupsCount: 0,
+    totalMembersCount: 0,
+    totalChitAmount: 0,
+    totalCollectionsAmount: 0,
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    API.get('/dashboard/stats')
-      .then(res => setStats(res.data))
-      .catch(err => console.error('Error loading dashboard:', err));
+    const fetchDashboardData = async () => {
+      try {
+        const res = await api.get('/dashboard/stats');
+        setStats(res.data);
+      } catch (err) {
+        console.error('Dashboard fetch error:', err);
+        setError('Failed to load dashboard metrics.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboardData();
   }, []);
 
-  if (!stats) return <div className="loading">Loading dashboard metrics...</div>;
+  if (loading) {
+    return <div style={{ color: '#fff', padding: '24px' }}>Loading dashboard metrics...</div>;
+  }
 
   return (
-    <div className="module-container">
-      <h2>Dashboard Overview</h2>
+    <div className="dashboard-container" style={{ padding: '24px', color: '#fff' }}>
+      <h2 style={{ marginBottom: '20px' }}>Dashboard Overview</h2>
       
-      <div className="metrics-grid">
-        <div className="card">
-          <h4>Total Chit Groups</h4>
-          <p className="metric">{stats.totalChitGroups}</p>
+      {error && (
+        <div className="alert error" style={{ marginBottom: '20px', background: '#e5393522', color: '#ff8a80', padding: '12px', borderRadius: '6px' }}>
+          {error}
         </div>
-        <div className="card">
-          <h4>Total Members</h4>
-          <p className="metric">{stats.totalMembers}</p>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px' }}>
+        <div style={{ background: '#1e1e2d', padding: '20px', borderRadius: '10px', borderLeft: '4px solid #7c4dff' }}>
+          <p style={{ margin: 0, color: '#aaa', fontSize: '14px' }}>Active Groups</p>
+          <h3 style={{ margin: '8px 0 0', fontSize: '28px' }}>{stats.activeGroupsCount || 0}</h3>
         </div>
-        <div className="card">
-          <h4>Active Groups</h4>
-          <p className="metric active">{stats.activeChitGroups}</p>
+
+        <div style={{ background: '#1e1e2d', padding: '20px', borderRadius: '10px', borderLeft: '4px solid #00e676' }}>
+          <p style={{ margin: 0, color: '#aaa', fontSize: '14px' }}>Total Members</p>
+          <h3 style={{ margin: '8px 0 0', fontSize: '28px' }}>{stats.totalMembersCount || 0}</h3>
         </div>
-        <div className="card">
-          <h4>Completed Groups</h4>
-          <p className="metric completed">{stats.completedChitGroups}</p>
+
+        <div style={{ background: '#1e1e2d', padding: '20px', borderRadius: '10px', borderLeft: '4px solid #ff9100' }}>
+          <p style={{ margin: 0, color: '#aaa', fontSize: '14px' }}>Total Chit Value</p>
+          <h3 style={{ margin: '8px 0 0', fontSize: '28px' }}>₹{stats.totalChitAmount || 0}</h3>
         </div>
-        <div className="card">
-          <h4>Total Collections</h4>
-          <p className="metric money">₹{stats.totalMonthlyCollections}</p>
-        </div>
-        <div className="card">
-          <h4>Pending Collections</h4>
-          <p className="metric pending">₹{stats.pendingCollections}</p>
+
+        <div style={{ background: '#1e1e2d', padding: '20px', borderRadius: '10px', borderLeft: '4px solid #00b0ff' }}>
+          <p style={{ margin: 0, color: '#aaa', fontSize: '14px' }}>Total Collections</p>
+          <h3 style={{ margin: '8px 0 0', fontSize: '28px' }}>₹{stats.totalCollectionsAmount || 0}</h3>
         </div>
       </div>
-
-      <h3 style={{ marginTop: '30px' }}>Recent Auctions</h3>
-      <table>
-        <thead>
-          <tr>
-            <th>Group Name</th>
-            <th>Winner Member</th>
-            <th>Bid Amount</th>
-            <th>Auction Date</th>
-          </tr>
-        </thead>
-        <tbody>
-          {stats.recentAuctions && stats.recentAuctions.length > 0 ? (
-            stats.recentAuctions.map((auc) => (
-              <tr key={auc.id}>
-                <td>{auc.chitGroup?.groupName}</td>
-                <td>{auc.winnerMember?.memberName}</td>
-                <td>₹{auc.bidAmount}</td>
-                <td>{auc.auctionDate}</td>
-              </tr>
-            ))
-          ) : (
-            <tr><td colSpan="4">No recent auctions available.</td></tr>
-          )}
-        </tbody>
-      </table>
     </div>
   );
 }

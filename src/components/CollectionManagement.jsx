@@ -5,122 +5,262 @@ export default function CollectionManagement() {
   const [collections, setCollections] = useState([]);
   const [members, setMembers] = useState([]);
   const [groups, setGroups] = useState([]);
+
+  const [selectedMemberId, setSelectedMemberId] = useState('');
+  const [selectedGroupId, setSelectedGroupId] = useState('');
+  const [amount, setAmount] = useState('');
+  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
+  const [paymentMode, setPaymentMode] = useState('CASH');
   const [search, setSearch] = useState('');
+
   const [message, setMessage] = useState({ type: '', text: '' });
 
-  const [formData, setFormData] = useState({
-    member: { id: '' },
-    chitGroup: { id: '' },
-    installmentAmount: '',
-    paymentDate: '',
-    paymentMode: 'CASH',
-    paymentStatus: 'PAID'
-  });
+  useEffect(() => {
+    fetchData();
+  }, []);
 
   const fetchData = async () => {
     try {
       const [colRes, memRes, grpRes] = await Promise.all([
-        API.get(`/collections?search=${search}`),
+        API.get('/collections'),
         API.get('/members'),
-        API.get('/groups')
+        API.get('/groups'),
       ]);
       setCollections(colRes.data);
       setMembers(memRes.data);
       setGroups(grpRes.data);
     } catch (err) {
-      setMessage({ type: 'error', text: 'Error loading payment collections.' });
+      console.error('Fetch collections error:', err);
+      setMessage({ type: 'error', text: 'Failed to fetch collections data.' });
     }
   };
 
-  useEffect(() => { fetchData(); }, [search]);
+  const handleGroupSelect = async (groupId) => {
+    setSelectedGroupId(groupId);
+    if (!groupId) {
+      setAmount('');
+      return;
+    }
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
     try {
-      await API.post('/collections', formData);
-      setMessage({ type: 'success', text: 'Monthly collection recorded!' });
-      setFormData({ member: { id: '' }, chitGroup: { id: '' }, installmentAmount: '', paymentDate: '', paymentMode: 'CASH', paymentStatus: 'PAID' });
+      const res = await API.get(`/auctions/latest/group/${groupId}`);
+      if (res.data && res.data.nextInstallmentAmount) {
+        setAmount(res.data.nextInstallmentAmount);
+      } else {
+        const group = groups.find((g) => g.id === parseInt(groupId, 10));
+        if (group) {
+          setAmount(group.monthlyInstallment || group.chitAmount / group.numberOfMembers);
+        }
+      }
+    } catch (err) {
+      const group = groups.find((g) => g.id === parseInt(groupId, 10));
+      if (group) {
+        setAmount(group.monthlyInstallment || group.chitAmount / group.numberOfMembers);
+      }
+    }
+  };
+
+  const handleRecordCollection = async (e) => {
+    e.preventDefault();
+    setMessage({ type: '', text: '' });
+
+    if (!selectedMemberId || !selectedGroupId || !amount) {
+      setMessage({ type: 'error', text: 'Please fill out Member, Group, and Amount.' });
+      return;
+    }
+
+    try {
+      const payload = {
+        member: { id: parseInt(selectedMemberId, 10) },
+        chitGroup: { id: parseInt(selectedGroupId, 10) },
+        amount: parseFloat(amount),
+        paymentDate,
+        paymentMode,
+        status: 'PAID',
+      };
+
+      await API.post('/collections', payload);
+      setMessage({ type: 'success', text: 'Payment collected and receipt generated!' });
+      setAmount('');
+      setSelectedMemberId('');
+      setSelectedGroupId('');
       fetchData();
     } catch (err) {
-      setMessage({ type: 'error', text: 'Error recording payment.' });
+      console.error('Record collection error:', err);
+      setMessage({ type: 'error', text: 'Failed to record collection.' });
     }
   };
 
-  const handleDelete = async (id) => {
-    if (window.confirm('Delete payment collection record?')) {
-      await API.delete(`/collections/${id}`);
-      setMessage({ type: 'success', text: 'Record deleted.' });
-      fetchData();
-    }
+  const filteredCollections = collections.filter((col) => {
+    const memberName = col.member?.name?.toLowerCase() || '';
+    const groupName = col.chitGroup?.groupName?.toLowerCase() || '';
+    const term = search.toLowerCase();
+    return memberName.includes(term) || groupName.includes(term);
+  });
+
+  const fieldStyle = {
+    backgroundColor: '#0f1120',
+    border: '1px solid #282c45',
+    borderRadius: '8px',
+    padding: '0 14px',
+    height: '42px',
+    color: '#ffffff',
+    fontSize: '14px',
+    outline: 'none',
+    width: '100%',
+    boxSizing: 'border-box',
+  };
+
+  const labelStyle = {
+    fontSize: '13px',
+    fontWeight: '500',
+    color: '#9ca3af',
+    marginBottom: '8px',
+    minHeight: '36px',
+    display: 'flex',
+    alignItems: 'flex-end',
   };
 
   return (
     <div className="module-container">
-      <h2>Module 4: Monthly Collection Management</h2>
+      <h2>Payment Collections</h2>
       {message.text && <div className={`alert ${message.type}`}>{message.text}</div>}
 
-      <form onSubmit={handleSubmit} className="form-card">
-        <h3>Record Monthly Collection</h3>
+      <form onSubmit={handleRecordCollection} className="form-card">
+        <h3>Record Monthly Installment Payment</h3>
         <div className="form-grid">
-          <select value={formData.member.id} onChange={e => setFormData({...formData, member: { id: e.target.value }})} required>
-            <option value="">-- Select Member --</option>
-            {members.map(m => <option key={m.id} value={m.id}>{m.memberName}</option>)}
-          </select>
+          <div className="form-group">
+            <label style={labelStyle}>Select Member *</label>
+            <select
+              style={fieldStyle}
+              value={selectedMemberId}
+              onChange={(e) => setSelectedMemberId(e.target.value)}
+              required
+            >
+              <option value="">-- Select Member --</option>
+              {members.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          </div>
 
-          <select value={formData.chitGroup.id} onChange={e => setFormData({...formData, chitGroup: { id: e.target.value }})} required>
-            <option value="">-- Select Chit Group --</option>
-            {groups.map(g => <option key={g.id} value={g.id}>{g.groupName} (Installment: ₹{g.monthlyInstallment})</option>)}
-          </select>
+          <div className="form-group">
+            <label style={labelStyle}>Select Chit Group *</label>
+            <select
+              style={fieldStyle}
+              value={selectedGroupId}
+              onChange={(e) => handleGroupSelect(e.target.value)}
+              required
+            >
+              <option value="">-- Select Group --</option>
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.groupName}
+                </option>
+              ))}
+            </select>
+          </div>
 
-          <input type="number" placeholder="Installment Amount (₹)" value={formData.installmentAmount} onChange={e => setFormData({...formData, installmentAmount: e.target.value})} required />
-          <input type="date" value={formData.paymentDate} onChange={e => setFormData({...formData, paymentDate: e.target.value})} required />
-          
-          <select value={formData.paymentMode} onChange={e => setFormData({...formData, paymentMode: e.target.value})}>
-            <option value="CASH">CASH</option>
-            <option value="UPI">UPI</option>
-            <option value="BANK_TRANSFER">BANK TRANSFER</option>
-          </select>
+          <div className="form-group">
+            <label style={labelStyle}>Auto-Filled Payable Amount (₹) *</label>
+            <input
+              type="number"
+              placeholder="0.00"
+              style={fieldStyle}
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              required
+            />
+          </div>
 
-          <select value={formData.paymentStatus} onChange={e => setFormData({...formData, paymentStatus: e.target.value})}>
-            <option value="PAID">PAID</option>
-            <option value="PENDING">PENDING</option>
-          </select>
+          <div className="form-group">
+            <label style={labelStyle}>Payment Mode *</label>
+            <select
+              style={fieldStyle}
+              value={paymentMode}
+              onChange={(e) => setPaymentMode(e.target.value)}
+              required
+            >
+              <option value="CASH">CASH</option>
+              <option value="UPI">UPI / GPay</option>
+              <option value="BANK_TRANSFER">BANK TRANSFER</option>
+              <option value="CHEQUE">CHEQUE</option>
+            </select>
+          </div>
         </div>
-        <button type="submit" className="btn-primary">Record Collection</button>
+
+        <div className="btn-group">
+          <button type="submit" className="btn-primary">
+            Record Payment & Issue Receipt
+          </button>
+        </div>
       </form>
 
-      <div className="search-bar">
-        <input type="text" placeholder="Search by Member Name..." value={search} onChange={e => setSearch(e.target.value)} />
-      </div>
+      <div style={{ marginTop: '30px' }}>
+        <h3>Recent Collection History</h3>
+        <div className="search-bar" style={{ marginTop: '10px' }}>
+          <input
+            type="text"
+            placeholder="Search Collections by Member..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
 
-      <table>
-        <thead>
-          <tr>
-            <th>Member</th>
-            <th>Group</th>
-            <th>Amount</th>
-            <th>Payment Date</th>
-            <th>Mode</th>
-            <th>Status</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {collections.map(c => (
-            <tr key={c.id}>
-              <td>{c.member?.memberName}</td>
-              <td>{c.chitGroup?.groupName}</td>
-              <td>₹{c.installmentAmount}</td>
-              <td>{c.paymentDate}</td>
-              <td>{c.paymentMode}</td>
-              <td><span className={`status ${c.paymentStatus.toLowerCase()}`}>{c.paymentStatus}</span></td>
-              <td>
-                <button onClick={() => handleDelete(c.id)} className="btn-delete">Delete</button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+        <div className="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th>Member Name</th>
+                <th>Chit Group</th>
+                <th>Paid Amount</th>
+                <th>Payment Mode</th>
+                <th>Payment Date</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredCollections.length === 0 ? (
+                <tr>
+                  <td colSpan="6" style={{ textAlign: 'center', color: '#9ca3af' }}>
+                    No collection records found.
+                  </td>
+                </tr>
+              ) : (
+                filteredCollections.map((col) => (
+                  <tr key={col.id}>
+                    <td>{col.member?.name || 'N/A'}</td>
+                    <td>{col.chitGroup?.groupName || 'N/A'}</td>
+                    <td style={{ color: '#00e676', fontWeight: 'bold' }}>
+                      ₹{col.amount ? col.amount.toLocaleString() : 0}
+                    </td>
+                    <td>{col.paymentMode || 'CASH'}</td>
+                    <td>{col.paymentDate || 'N/A'}</td>
+                    <td>
+                      <span
+                        style={{
+                          background: '#10b98122',
+                          color: '#34d399',
+                          border: '1px solid #10b98188',
+                          padding: '4px 8px',
+                          borderRadius: '6px',
+                          fontSize: '11px',
+                          fontWeight: '700',
+                          display: 'inline-block',
+                        }}
+                      >
+                        {col.status || 'PAID'}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }

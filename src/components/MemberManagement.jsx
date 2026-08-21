@@ -10,7 +10,10 @@ export default function MemberManagement() {
   const [selectedGroupId, setSelectedGroupId] = useState('');
 
   const [formData, setFormData] = useState({
-    memberName: '', mobileNumber: '', emailAddress: '', address: ''
+    memberName: '',
+    mobileNumber: '',
+    emailAddress: '',
+    address: ''
   });
 
   const fetchData = async () => {
@@ -22,11 +25,14 @@ export default function MemberManagement() {
       setMembers(memRes.data);
       setGroups(grpRes.data);
     } catch (err) {
+      console.error('Fetch error:', err);
       setMessage({ type: 'error', text: 'Error fetching members or groups.' });
     }
   };
 
-  useEffect(() => { fetchData(); }, [search]);
+  useEffect(() => {
+    fetchData();
+  }, [search]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -41,7 +47,12 @@ export default function MemberManagement() {
       resetForm();
       fetchData();
     } catch (err) {
-      setMessage({ type: 'error', text: 'Error saving member.' });
+      console.error('Save error:', err);
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        setMessage({ type: 'error', text: 'Unauthorized action. Please re-login as Admin.' });
+      } else {
+        setMessage({ type: 'error', text: 'Error saving member details.' });
+      }
     }
   };
 
@@ -55,6 +66,7 @@ export default function MemberManagement() {
       setMessage({ type: 'success', text: 'Member enrolled to group!' });
       fetchData();
     } catch (err) {
+      console.error('Enroll error:', err);
       setMessage({ type: 'error', text: 'Failed to enroll member.' });
     }
   };
@@ -65,15 +77,33 @@ export default function MemberManagement() {
       setMessage({ type: 'success', text: 'Member removed from group.' });
       fetchData();
     } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to unenroll.' });
+      console.error('Unenroll error:', err);
+      setMessage({ type: 'error', text: 'Failed to unenroll member.' });
     }
   };
 
   const handleDelete = async (id) => {
-    if (window.confirm('Delete this member?')) {
+    if (!window.confirm('Are you sure you want to delete this member?')) {
+      return;
+    }
+
+    try {
       await API.delete(`/members/${id}`);
-      setMessage({ type: 'success', text: 'Member deleted.' });
+      setMessage({ type: 'success', text: 'Member deleted successfully!' });
       fetchData();
+    } catch (err) {
+      console.error('Delete member error:', err);
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        setMessage({
+          type: 'error',
+          text: 'Session expired or unauthorized. Please re-login as Admin.'
+        });
+      } else {
+        setMessage({
+          type: 'error',
+          text: 'Failed to delete member. Ensure they are not linked to active auctions or collections.'
+        });
+      }
     }
   };
 
@@ -84,28 +114,60 @@ export default function MemberManagement() {
 
   return (
     <div className="module-container">
-      <h2>Module 2 & 5: Member & Enrollment Management</h2>
+      <h2>Member & Enrollment Management</h2>
       {message.text && <div className={`alert ${message.type}`}>{message.text}</div>}
 
       <form onSubmit={handleSubmit} className="form-card">
         <h3>{editingId ? 'Edit Member' : 'Register New Member'}</h3>
         <div className="form-grid">
-          <input placeholder="Member Name" value={formData.memberName} onChange={e => setFormData({...formData, memberName: e.target.value})} required />
-          <input placeholder="Mobile Number" value={formData.mobileNumber} onChange={e => setFormData({...formData, mobileNumber: e.target.value})} required />
-          <input type="email" placeholder="Email Address" value={formData.emailAddress} onChange={e => setFormData({...formData, emailAddress: e.target.value})} required />
-          <input placeholder="Address" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} required />
+          <input
+            placeholder="Member Name"
+            value={formData.memberName || formData.name || ''}
+            onChange={(e) => setFormData({ ...formData, memberName: e.target.value, name: e.target.value })}
+            required
+          />
+          <input
+            placeholder="Mobile Number"
+            value={formData.mobileNumber || ''}
+            onChange={(e) => setFormData({ ...formData, mobileNumber: e.target.value })}
+            required
+          />
+          <input
+            type="email"
+            placeholder="Email Address"
+            value={formData.emailAddress || ''}
+            onChange={(e) => setFormData({ ...formData, emailAddress: e.target.value })}
+            required
+          />
+          <input
+            placeholder="Address"
+            value={formData.address || ''}
+            onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+            required
+          />
         </div>
         <div className="btn-group">
-          <button type="submit" className="btn-primary">{editingId ? 'Update Member' : 'Register Member'}</button>
-          {editingId && <button type="button" onClick={resetForm} className="btn-secondary">Cancel</button>}
+          <button type="submit" className="btn-primary">
+            {editingId ? 'Update Member' : 'Register Member'}
+          </button>
+          {editingId && (
+            <button type="button" onClick={resetForm} className="btn-secondary">
+              Cancel
+            </button>
+          )}
         </div>
       </form>
 
       <div className="search-bar" style={{ display: 'flex', gap: '15px' }}>
-        <input type="text" placeholder="Search Member Name..." value={search} onChange={e => setSearch(e.target.value)} />
-        <select value={selectedGroupId} onChange={e => setSelectedGroupId(e.target.value)}>
+        <input
+          type="text"
+          placeholder="Search Member Name..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <select value={selectedGroupId} onChange={(e) => setSelectedGroupId(e.target.value)}>
           <option value="">-- Select Group to Assign --</option>
-          {groups.map(g => (
+          {groups.map((g) => (
             <option key={g.id} value={g.id}>
               {g.groupName} (₹{g.chitAmount})
             </option>
@@ -126,27 +188,48 @@ export default function MemberManagement() {
             </tr>
           </thead>
           <tbody>
-            {members.map(m => (
+            {members.map((m) => (
               <tr key={m.id}>
-                <td>{m.memberName}</td>
+                <td>{m.memberName || m.name}</td>
                 <td>{m.mobileNumber}</td>
                 <td>{m.emailAddress}</td>
                 <td>{m.address}</td>
                 <td>
                   {m.chitGroups && m.chitGroups.length > 0 ? (
-                    m.chitGroups.map(g => (
+                    m.chitGroups.map((g) => (
                       <span key={g.id} className="badge">
-                        {g.groupName} 
-                        <button onClick={() => handleUnenroll(m.id, g.id)} className="btn-x">×</button>
+                        {g.groupName}
+                        <button onClick={() => handleUnenroll(m.id, g.id)} className="btn-x">
+                          ×
+                        </button>
                       </span>
                     ))
-                  ) : <em>Not Enrolled</em>}
+                  ) : (
+                    <em>Not Enrolled</em>
+                  )}
                 </td>
                 <td>
                   <div className="action-buttons">
-                    <button onClick={() => handleEnroll(m.id)} className="btn-assign">Assign Group</button>
-                    <button onClick={() => { setEditingId(m.id); setFormData(m); }} className="btn-edit">Edit</button>
-                    <button onClick={() => handleDelete(m.id)} className="btn-delete">Delete</button>
+                    <button onClick={() => handleEnroll(m.id)} className="btn-assign">
+                      Assign Group
+                    </button>
+                    <button
+                      onClick={() => {
+                        setEditingId(m.id);
+                        setFormData({
+                          memberName: m.memberName || m.name,
+                          mobileNumber: m.mobileNumber,
+                          emailAddress: m.emailAddress,
+                          address: m.address
+                        });
+                      }}
+                      className="btn-edit"
+                    >
+                      Edit
+                    </button>
+                    <button onClick={() => handleDelete(m.id)} className="btn-delete">
+                      Delete
+                    </button>
                   </div>
                 </td>
               </tr>
