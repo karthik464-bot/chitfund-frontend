@@ -1,150 +1,138 @@
 import React, { useState, useEffect } from 'react';
 import API from '../api';
+import { exportToCSV } from '../utils/exportToCSV';
 
 export default function AuctionManagement() {
   const [auctions, setAuctions] = useState([]);
   const [groups, setGroups] = useState([]);
   const [members, setMembers] = useState([]);
 
+  // Form State
   const [selectedGroupId, setSelectedGroupId] = useState('');
-  const [selectedWinnerId, setSelectedWinnerId] = useState('');
+  const [winnerMemberId, setWinnerMemberId] = useState('');
   const [winningBidAmount, setWinningBidAmount] = useState('');
+  const [dividendPerMember, setDividendPerMember] = useState('');
   const [auctionDate, setAuctionDate] = useState(new Date().toISOString().split('T')[0]);
-  const [search, setSearch] = useState('');
 
-  const [calculatedMetrics, setCalculatedMetrics] = useState({
-    commission: 0,
-    totalDiscount: 0,
-    dividendPerMember: 0,
-    nextInstallment: 0,
-  });
+  // Search & Pagination State
+  const [search, setSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const [message, setMessage] = useState({ type: '', text: '' });
 
   useEffect(() => {
-    fetchInitialData();
+    fetchData();
   }, []);
 
-  const fetchInitialData = async () => {
+  const fetchData = async () => {
     try {
       const [aucRes, grpRes, memRes] = await Promise.all([
         API.get('/auctions'),
         API.get('/groups'),
         API.get('/members'),
       ]);
-      setAuctions(aucRes.data);
-      setGroups(grpRes.data);
-      setMembers(memRes.data);
+      setAuctions(aucRes.data || []);
+      setGroups(grpRes.data || []);
+      setMembers(memRes.data || []);
     } catch (err) {
-      console.error('Fetch error:', err);
-      setMessage({ type: 'error', text: 'Failed to fetch auction records.' });
+      console.error('Fetch error in Auctions module:', err);
+      setMessage({ type: 'error', text: 'Failed to load auction data.' });
     }
   };
 
-  // Identify members who have already won an auction in the selected Chit Group
-  const previousWinnerIds = auctions
-    .filter((auc) => auc.chitGroup?.id === parseInt(selectedGroupId, 10))
-    .map((auc) => auc.winnerMember?.id);
+  const handleBidChange = (bidVal) => {
+    setWinningBidAmount(bidVal);
+    if (!selectedGroupId || !bidVal) {
+      setDividendPerMember('');
+      return;
+    }
 
-  // Filter out previous winners so a member can only win ONCE per group
-  const eligibleMembers = members.filter(
-    (m) => !previousWinnerIds.includes(m.id)
-  );
-
-  // Reset winner selection when group changes if previous winner is no longer eligible
-  const handleGroupChange = (e) => {
-    const newGroupId = e.target.value;
-    setSelectedGroupId(newGroupId);
-    setSelectedWinnerId('');
+    const group = groups.find((g) => g.id === parseInt(selectedGroupId, 10));
+    if (group && group.numberOfMembers > 0) {
+      const bid = parseFloat(bidVal) || 0;
+      const dividend = (bid / group.numberOfMembers).toFixed(2);
+      setDividendPerMember(dividend);
+    }
   };
 
-  // Live Auto-Calculation preview
-  useEffect(() => {
-    if (selectedGroupId && winningBidAmount) {
-      const group = groups.find((g) => g.id === parseInt(selectedGroupId, 10));
-      if (group) {
-        const chitAmount = group.chitAmount || 0;
-        const totalMembers = group.numberOfMembers || 1;
-        const bid = parseFloat(winningBidAmount) || 0;
-
-        const comm = chitAmount * 0.05;
-        const disc = chitAmount - bid;
-        const div = (disc - comm) / totalMembers;
-        const nextInst = chitAmount / totalMembers - div;
-
-        setCalculatedMetrics({
-          commission: comm,
-          totalDiscount: disc,
-          dividendPerMember: div > 0 ? div : 0,
-          nextInstallment: nextInst > 0 ? nextInst : 0,
-        });
-      }
-    }
-  }, [selectedGroupId, winningBidAmount, groups]);
-
-  const handleSaveAuction = async (e) => {
+  const handleRecordAuction = async (e) => {
     e.preventDefault();
     setMessage({ type: '', text: '' });
 
-    if (!selectedGroupId || !selectedWinnerId || !winningBidAmount) {
-      setMessage({ type: 'error', text: 'Please fill out all required fields.' });
+    if (!selectedGroupId || !winnerMemberId || !winningBidAmount || !auctionDate) {
+      setMessage({ type: 'error', text: 'Please fill out all required auction details.' });
       return;
     }
 
-    const winnerIdNum = parseInt(selectedWinnerId, 10);
-    if (previousWinnerIds.includes(winnerIdNum)) {
-      setMessage({
-        type: 'error',
-        text: 'This member has already won an auction in this Chit Group! A member can win only once per group.',
-      });
-      return;
-    }
+    const groupIdNum = parseInt(selectedGroupId, 10);
+    const memberIdNum = parseInt(winnerMemberId, 10);
+    const bidAmountNum = parseFloat(winningBidAmount);
+
+    const payload = {
+      chitGroup: { id: groupIdNum },
+      group: { id: groupIdNum },
+      winnerMember: { id: memberIdNum },
+      member: { id: memberIdNum },
+      winningBidAmount: bidAmountNum,
+      dividendPerMember: parseFloat(dividendPerMember) || 0,
+      auctionDate,
+    };
 
     try {
-      const payload = {
-        chitGroup: { id: parseInt(selectedGroupId, 10) },
-        winnerMember: { id: winnerIdNum },
-        winningBidAmount: parseFloat(winningBidAmount),
-        auctionDate,
-      };
-
       await API.post('/auctions', payload);
-      setMessage({ type: 'success', text: 'Auction saved and dividends calculated successfully!' });
-      setWinningBidAmount('');
+      setMessage({ type: 'success', text: 'Auction recorded successfully!' });
       setSelectedGroupId('');
-      setSelectedWinnerId('');
-      fetchInitialData();
+      setWinnerMemberId('');
+      setWinningBidAmount('');
+      setDividendPerMember('');
+      fetchData();
     } catch (err) {
-      console.error('Save auction error:', err);
-      setMessage({ type: 'error', text: 'Failed to save auction record.' });
+      console.error('Record auction error:', err);
+      const serverMsg = err.response?.data?.message || 'Failed to record auction.';
+      setMessage({ type: 'error', text: serverMsg });
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this auction record?')) {
-      return;
-    }
+  const handleDeleteAuction = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this auction record?')) return;
 
     try {
       await API.delete(`/auctions/${id}`);
-      setMessage({ type: 'success', text: 'Auction record deleted successfully!' });
-      fetchInitialData();
+      setMessage({ type: 'success', text: 'Auction record deleted successfully.' });
+      fetchData();
     } catch (err) {
       console.error('Delete auction error:', err);
-      if (err.response?.status === 401 || err.response?.status === 403) {
-        setMessage({ type: 'error', text: 'Unauthorized. Please log in as Admin.' });
-      } else {
-        setMessage({ type: 'error', text: 'Failed to delete auction record.' });
-      }
+      setMessage({ type: 'error', text: 'Failed to delete auction record.' });
     }
   };
 
+  const handleExportCSV = () => {
+    const headers = ['Auction ID', 'Chit Group', 'Winner Name', 'Winning Bid Amount (₹)', 'Dividend per Member (₹)', 'Auction Date'];
+    const rows = filteredAuctions.map((auc) => [
+      auc.id,
+      auc.chitGroup?.groupName || auc.group?.groupName || 'N/A',
+      auc.winnerMember?.name || auc.member?.name || 'N/A',
+      auc.winningBidAmount || 0,
+      auc.dividendPerMember || 0,
+      auc.auctionDate || 'N/A',
+    ]);
+    exportToCSV('Auction_History_Report', headers, rows);
+  };
+
+  // Filter & Pagination Logic
   const filteredAuctions = auctions.filter((auc) => {
-    const groupName = auc.chitGroup?.groupName?.toLowerCase() || '';
-    const memberName = auc.winnerMember?.name?.toLowerCase() || '';
     const term = search.toLowerCase();
-    return groupName.includes(term) || memberName.includes(term);
+    const groupName = (auc.chitGroup?.groupName || auc.group?.groupName || '').toLowerCase();
+    const winnerName = (auc.winnerMember?.name || auc.member?.name || '').toLowerCase();
+    return groupName.includes(term) || winnerName.includes(term);
   });
+
+  const totalPages = Math.ceil(filteredAuctions.length / pageSize) || 1;
+  const paginatedAuctions = filteredAuctions.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize
+  );
 
   const fieldStyle = {
     backgroundColor: '#0f1120',
@@ -164,70 +152,69 @@ export default function AuctionManagement() {
     fontWeight: '500',
     color: '#9ca3af',
     marginBottom: '8px',
-    minHeight: '36px',
-    display: 'flex',
-    alignItems: 'flex-end',
+    display: 'block',
   };
 
   return (
     <div className="module-container">
-      <h2>Auction & Dividend Engine</h2>
+      <h2>Monthly Auction Management</h2>
       {message.text && <div className={`alert ${message.type}`}>{message.text}</div>}
 
-      {/* Record New Auction Form Card */}
-      <form onSubmit={handleSaveAuction} className="form-card">
-        <h3>Record New Auction</h3>
-        <div className="form-grid">
+      {/* Record Auction Card */}
+      <form onSubmit={handleRecordAuction} className="form-card" style={{ marginBottom: '28px' }}>
+        <h3>Conduct & Record Auction</h3>
+        <div className="form-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
           <div className="form-group">
             <label style={labelStyle}>Select Chit Group *</label>
             <select
               style={fieldStyle}
               value={selectedGroupId}
-              onChange={handleGroupChange}
+              onChange={(e) => setSelectedGroupId(e.target.value)}
               required
             >
               <option value="">-- Select Group --</option>
               {groups.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.groupName} (₹{g.chitAmount})
-                </option>
+                <option key={g.id} value={g.id}>{g.groupName}</option>
               ))}
             </select>
           </div>
 
           <div className="form-group">
-            <label style={labelStyle}>Winner Member *</label>
+            <label style={labelStyle}>Auction Winner *</label>
             <select
               style={fieldStyle}
-              value={selectedWinnerId}
-              onChange={(e) => setSelectedWinnerId(e.target.value)}
+              value={winnerMemberId}
+              onChange={(e) => setWinnerMemberId(e.target.value)}
               required
-              disabled={!selectedGroupId}
             >
-              <option value="">
-                {!selectedGroupId
-                  ? '-- Select Group First --'
-                  : eligibleMembers.length === 0
-                  ? '-- All Members Have Won --'
-                  : '-- Select Winner --'}
-              </option>
-              {eligibleMembers.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
+              <option value="">-- Select Winner --</option>
+              {members.map((m) => (
+                <option key={m.id} value={m.id}>{m.name}</option>
               ))}
             </select>
           </div>
 
           <div className="form-group">
-            <label style={labelStyle}>Winning Bid Amount (₹) *</label>
+            <label style={labelStyle}>Winning Bid / Discount (₹) *</label>
             <input
               type="number"
-              placeholder="e.g. 180000"
+              placeholder="e.g. 15000"
               style={fieldStyle}
               value={winningBidAmount}
-              onChange={(e) => setWinningBidAmount(e.target.value)}
+              onChange={(e) => handleBidChange(e.target.value)}
               required
+            />
+          </div>
+
+          <div className="form-group">
+            <label style={labelStyle}>Auto Dividend / Member (₹)</label>
+            <input
+              type="number"
+              placeholder="0.00"
+              style={{ ...fieldStyle, backgroundColor: '#131629', color: '#10b981', fontWeight: 'bold' }}
+              value={dividendPerMember}
+              onChange={(e) => setDividendPerMember(e.target.value)}
+              readOnly
             />
           </div>
 
@@ -243,108 +230,100 @@ export default function AuctionManagement() {
           </div>
         </div>
 
-        {/* Live Calculation Preview Banner */}
-        {selectedGroupId && winningBidAmount && (
-          <div
-            style={{
-              background: '#0f1120',
-              border: '1px solid #282c45',
-              borderRadius: '8px',
-              padding: '16px',
-              marginBottom: '20px',
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-              gap: '16px',
-            }}
-          >
-            <div>
-              <small style={{ color: '#9ca3af', display: 'block', fontSize: '11px' }}>
-                Foreman Commission (5%)
-              </small>
-              <strong style={{ fontSize: '15px' }}>₹{calculatedMetrics.commission.toFixed(2)}</strong>
-            </div>
-            <div>
-              <small style={{ color: '#9ca3af', display: 'block', fontSize: '11px' }}>
-                Total Discount
-              </small>
-              <strong style={{ fontSize: '15px' }}>₹{calculatedMetrics.totalDiscount.toFixed(2)}</strong>
-            </div>
-            <div>
-              <small style={{ color: '#9ca3af', display: 'block', fontSize: '11px' }}>
-                Dividend / Member
-              </small>
-              <strong style={{ fontSize: '15px', color: '#00e676' }}>
-                ₹{calculatedMetrics.dividendPerMember.toFixed(2)}
-              </strong>
-            </div>
-            <div>
-              <small style={{ color: '#9ca3af', display: 'block', fontSize: '11px' }}>
-                Adjusted Next Payable
-              </small>
-              <strong style={{ fontSize: '15px', color: '#7c4dff' }}>
-                ₹{calculatedMetrics.nextInstallment.toFixed(2)}
-              </strong>
-            </div>
-          </div>
-        )}
-
-        <div className="btn-group">
+        <div className="btn-group" style={{ marginTop: '20px' }}>
           <button type="submit" className="btn-primary">
-            Save & Distribute Dividend
+            Record Auction & Distribute Dividend
           </button>
         </div>
       </form>
 
-      {/* Past Auction History Section */}
-      <div style={{ marginTop: '30px' }}>
-        <h3>Past Auction History</h3>
-        <div className="search-bar" style={{ marginTop: '10px' }}>
-          <input
-            type="text"
-            placeholder="Search Auction by Group or Member..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+      {/* History Section */}
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+          <h3>Auction History Log</h3>
+          <button
+            onClick={handleExportCSV}
+            style={{
+              backgroundColor: '#10b981',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '8px',
+              padding: '10px 16px',
+              fontSize: '13px',
+              fontWeight: '600',
+              cursor: 'pointer',
+            }}
+          >
+            📥 Export to CSV / Excel
+          </button>
         </div>
 
+        {/* Filter & Page Size Bar */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '14px', marginBottom: '14px', gap: '12px' }}>
+          <input
+            type="text"
+            placeholder="Search Auctions by Group or Winner Name..."
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setCurrentPage(1);
+            }}
+            style={{ ...fieldStyle, maxWidth: '360px' }}
+          />
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#9ca3af', fontSize: '13px' }}>
+            <span>Rows per page:</span>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              style={{ ...fieldStyle, width: '70px', height: '36px' }}
+            >
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Table View */}
         <div className="table-responsive">
           <table>
             <thead>
               <tr>
                 <th>Chit Group</th>
-                <th>Winner Member</th>
-                <th>Winning Bid</th>
+                <th>Winning Member</th>
+                <th>Winning Bid (Discount)</th>
                 <th>Dividend / Member</th>
-                <th>Next Installment</th>
-                <th>Date</th>
+                <th>Auction Date</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filteredAuctions.length === 0 ? (
+              {paginatedAuctions.length === 0 ? (
                 <tr>
-                  <td colSpan="7" style={{ textAlign: 'center', color: '#9ca3af' }}>
+                  <td colSpan="6" style={{ textAlign: 'center', color: '#9ca3af' }}>
                     No auction records found.
                   </td>
                 </tr>
               ) : (
-                filteredAuctions.map((auc) => (
+                paginatedAuctions.map((auc) => (
                   <tr key={auc.id}>
-                    <td>{auc.chitGroup?.groupName || 'Chit Scheme'}</td>
-                    <td>{auc.winnerMember?.name || 'N/A'}</td>
-                    <td>₹{auc.winningBidAmount ? auc.winningBidAmount.toLocaleString() : 0}</td>
-                    <td style={{ color: '#00e676', fontWeight: 'bold' }}>
-                      ₹{auc.dividendPerMember ? auc.dividendPerMember.toLocaleString() : 0}
+                    <td style={{ fontWeight: '600', color: '#ffffff' }}>
+                      {auc.chitGroup?.groupName || auc.group?.groupName || 'N/A'}
                     </td>
-                    <td style={{ color: '#7c4dff', fontWeight: 'bold' }}>
-                      ₹{auc.nextInstallmentAmount ? auc.nextInstallmentAmount.toLocaleString() : 0}
+                    <td>{auc.winnerMember?.name || auc.member?.name || 'N/A'}</td>
+                    <td style={{ color: '#f59e0b', fontWeight: 'bold' }}>
+                      ₹{Number(auc.winningBidAmount || 0).toLocaleString()}
+                    </td>
+                    <td style={{ color: '#00e676', fontWeight: 'bold' }}>
+                      ₹{Number(auc.dividendPerMember || 0).toLocaleString()}
                     </td>
                     <td>{auc.auctionDate || 'N/A'}</td>
                     <td>
-                      <button
-                        onClick={() => handleDelete(auc.id)}
-                        className="btn-delete"
-                      >
+                      <button onClick={() => handleDeleteAuction(auc.id)} className="btn-delete">
                         Delete
                       </button>
                     </td>
@@ -353,6 +332,54 @@ export default function AuctionManagement() {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Pagination Footer */}
+        <div
+          style={{
+            display: 'flex',
+            justify: 'space-between',
+            alignItems: 'center',
+            marginTop: '16px',
+            color: '#9ca3af',
+            fontSize: '13px',
+          }}
+        >
+          <span>
+            Page {currentPage} of {totalPages} ({filteredAuctions.length} total auctions)
+          </span>
+
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage((p) => p - 1)}
+              style={{
+                backgroundColor: currentPage === 1 ? '#1f243888' : '#1f2438',
+                color: currentPage === 1 ? '#6b7280' : '#ffffff',
+                border: '1px solid #374151',
+                borderRadius: '6px',
+                padding: '6px 12px',
+                cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+              }}
+            >
+              Previous
+            </button>
+
+            <button
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage((p) => p + 1)}
+              style={{
+                backgroundColor: currentPage === totalPages ? '#1f243888' : '#1f2438',
+                color: currentPage === totalPages ? '#6b7280' : '#ffffff',
+                border: '1px solid #374151',
+                borderRadius: '6px',
+                padding: '6px 12px',
+                cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+              }}
+            >
+              Next
+            </button>
+          </div>
         </div>
       </div>
     </div>

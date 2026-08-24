@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import jsPDF from 'jspdf';
 import API from '../api';
+import { exportToCSV } from '../utils/exportToCSV';
 
 export default function CollectionManagement() {
   const [collections, setCollections] = useState([]);
@@ -12,6 +14,10 @@ export default function CollectionManagement() {
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
   const [paymentMode, setPaymentMode] = useState('CASH');
   const [search, setSearch] = useState('');
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const [message, setMessage] = useState({ type: '', text: '' });
 
@@ -26,9 +32,9 @@ export default function CollectionManagement() {
         API.get('/members'),
         API.get('/groups'),
       ]);
-      setCollections(colRes.data);
-      setMembers(memRes.data);
-      setGroups(grpRes.data);
+      setCollections(colRes.data || []);
+      setMembers(memRes.data || []);
+      setGroups(grpRes.data || []);
     } catch (err) {
       console.error('Fetch collections error:', err);
       setMessage({ type: 'error', text: 'Failed to fetch collections data.' });
@@ -82,7 +88,7 @@ export default function CollectionManagement() {
       paymentDate: paymentDate,
       paymentMode: paymentMode,
       status: 'PAID',
-      paymentStatus: 'PAID'
+      paymentStatus: 'PAID',
     };
 
     try {
@@ -105,9 +111,7 @@ export default function CollectionManagement() {
   };
 
   const handleDeleteCollection = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this collection record?')) {
-      return;
-    }
+    if (!window.confirm('Are you sure you want to delete this collection record?')) return;
 
     try {
       await API.delete(`/collections/${id}`);
@@ -119,12 +123,97 @@ export default function CollectionManagement() {
     }
   };
 
+  // PDF Receipt Download
+  const downloadReceipt = (col) => {
+    const doc = new jsPDF();
+    const memberName = col.member?.name || 'Member';
+    const groupName = col.chitGroup?.groupName || col.group?.groupName || 'Chit Group';
+    const paidAmt = Number(col.amount ?? col.installmentAmount ?? 0).toLocaleString();
+    const payDate = col.paymentDate || new Date().toISOString().split('T')[0];
+    const payMode = col.paymentMode || 'CASH';
+    const receiptNo = `REC-${col.id || Math.floor(1000 + Math.random() * 9000)}`;
+
+    doc.setDrawColor(99, 102, 241);
+    doc.setLineWidth(1);
+    doc.rect(10, 10, 190, 130);
+
+    doc.setFillColor(99, 102, 241);
+    doc.rect(10, 10, 190, 25, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text('CHIT FUND PAYMENT RECEIPT', 15, 26);
+    doc.setFontSize(10);
+    doc.text(`Receipt No: ${receiptNo}`, 145, 26);
+
+    doc.setTextColor(30, 41, 59);
+    doc.setFontSize(11);
+    let currentY = 50;
+
+    doc.setFont('helvetica', 'bold');
+    doc.text('Member Name:', 20, currentY);
+    doc.setFont('helvetica', 'normal');
+    doc.text(memberName, 55, currentY);
+
+    doc.setFont('helvetica', 'bold');
+    doc.text('Payment Date:', 110, currentY);
+    doc.setFont('helvetica', 'normal');
+    doc.text(payDate, 145, currentY);
+
+    currentY += 14;
+
+    doc.setFont('helvetica', 'bold');
+    doc.text('Chit Group:', 20, currentY);
+    doc.setFont('helvetica', 'normal');
+    doc.text(groupName, 55, currentY);
+
+    doc.setFont('helvetica', 'bold');
+    doc.text('Payment Mode:', 110, currentY);
+    doc.setFont('helvetica', 'normal');
+    doc.text(payMode, 145, currentY);
+
+    currentY += 18;
+
+    doc.setFillColor(243, 244, 246);
+    doc.rect(20, currentY, 170, 20, 'F');
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(16, 185, 129);
+    doc.text(`Amount Received: RS ${paidAmt}/-`, 30, currentY + 13);
+    doc.setTextColor(55, 65, 81);
+    doc.text(`Status: PAID`, 140, currentY + 13);
+
+    doc.save(`Receipt_${memberName.replace(/\s+/g, '_')}_${receiptNo}.pdf`);
+  };
+
+  // CSV Export Trigger
+  const handleExportCSV = () => {
+    const headers = ['Collection ID', 'Member Name', 'Chit Group', 'Paid Amount', 'Payment Mode', 'Payment Date', 'Status'];
+    const rows = filteredCollections.map((col) => [
+      col.id,
+      col.member?.name || 'N/A',
+      col.chitGroup?.groupName || col.group?.groupName || 'N/A',
+      col.amount ?? col.installmentAmount ?? 0,
+      col.paymentMode || 'CASH',
+      col.paymentDate || 'N/A',
+      col.status || col.paymentStatus || 'PAID',
+    ]);
+    exportToCSV('Collections_Report', headers, rows);
+  };
+
+  // Filter & Pagination Calculations
   const filteredCollections = collections.filter((col) => {
     const memberName = col.member?.name?.toLowerCase() || '';
     const groupName = col.chitGroup?.groupName?.toLowerCase() || col.group?.groupName?.toLowerCase() || '';
     const term = search.toLowerCase();
     return memberName.includes(term) || groupName.includes(term);
   });
+
+  const totalPages = Math.ceil(filteredCollections.length / pageSize) || 1;
+  const paginatedCollections = filteredCollections.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize
+  );
 
   const fieldStyle = {
     backgroundColor: '#0f1120',
@@ -167,9 +256,7 @@ export default function CollectionManagement() {
             >
               <option value="">-- Select Member --</option>
               {members.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
+                <option key={m.id} value={m.id}>{m.name}</option>
               ))}
             </select>
           </div>
@@ -184,9 +271,7 @@ export default function CollectionManagement() {
             >
               <option value="">-- Select Group --</option>
               {groups.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.groupName}
-                </option>
+                <option key={g.id} value={g.id}>{g.groupName}</option>
               ))}
             </select>
           </div>
@@ -238,16 +323,56 @@ export default function CollectionManagement() {
       </form>
 
       <div style={{ marginTop: '30px' }}>
-        <h3>Recent Collection History</h3>
-        <div className="search-bar" style={{ marginTop: '10px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+          <h3>Recent Collection History</h3>
+          <button
+            onClick={handleExportCSV}
+            style={{
+              backgroundColor: '#10b981',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '8px',
+              padding: '10px 16px',
+              fontSize: '13px',
+              fontWeight: '600',
+              cursor: 'pointer',
+            }}
+          >
+            📥 Export to CSV / Excel
+          </button>
+        </div>
+
+        {/* Search & Page Size Bar */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '14px', marginBottom: '14px', gap: '12px' }}>
           <input
             type="text"
             placeholder="Search Collections by Member..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setCurrentPage(1);
+            }}
+            style={{ ...fieldStyle, maxWidth: '320px' }}
           />
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#9ca3af', fontSize: '13px' }}>
+            <span>Rows per page:</span>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              style={{ ...fieldStyle, width: '70px', height: '36px' }}
+            >
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+            </select>
+          </div>
         </div>
 
+        {/* Table */}
         <div className="table-responsive">
           <table>
             <thead>
@@ -262,14 +387,14 @@ export default function CollectionManagement() {
               </tr>
             </thead>
             <tbody>
-              {filteredCollections.length === 0 ? (
+              {paginatedCollections.length === 0 ? (
                 <tr>
                   <td colSpan="7" style={{ textAlign: 'center', color: '#9ca3af' }}>
                     No collection records found.
                   </td>
                 </tr>
               ) : (
-                filteredCollections.map((col) => {
+                paginatedCollections.map((col) => {
                   const displayAmount = col.amount ?? col.installmentAmount ?? 0;
                   const displayStatus = col.status || col.paymentStatus || 'PAID';
                   return (
@@ -291,17 +416,28 @@ export default function CollectionManagement() {
                             borderRadius: '6px',
                             fontSize: '11px',
                             fontWeight: '700',
-                            display: 'inline-block',
                           }}
                         >
                           {displayStatus}
                         </span>
                       </td>
-                      <td>
+                      <td style={{ display: 'flex', gap: '8px' }}>
                         <button
-                          onClick={() => handleDeleteCollection(col.id)}
-                          className="btn-delete"
+                          onClick={() => downloadReceipt(col)}
+                          style={{
+                            backgroundColor: '#6366f1',
+                            color: '#ffffff',
+                            border: 'none',
+                            borderRadius: '6px',
+                            padding: '6px 10px',
+                            fontSize: '12px',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                          }}
                         >
+                          Receipt PDF
+                        </button>
+                        <button onClick={() => handleDeleteCollection(col.id)} className="btn-delete">
                           Delete
                         </button>
                       </td>
@@ -311,6 +447,54 @@ export default function CollectionManagement() {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Pagination Control Bar */}
+        <div
+          style={{
+            display: 'flex',
+            justify: 'space-between',
+            alignItems: 'center',
+            marginTop: '16px',
+            color: '#9ca3af',
+            fontSize: '13px',
+          }}
+        >
+          <span>
+            Page {currentPage} of {totalPages} ({filteredCollections.length} total records)
+          </span>
+
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage((p) => p - 1)}
+              style={{
+                backgroundColor: currentPage === 1 ? '#1f243888' : '#1f2438',
+                color: currentPage === 1 ? '#6b7280' : '#ffffff',
+                border: '1px solid #374151',
+                borderRadius: '6px',
+                padding: '6px 12px',
+                cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+              }}
+            >
+              Previous
+            </button>
+
+            <button
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage((p) => p + 1)}
+              style={{
+                backgroundColor: currentPage === totalPages ? '#1f243888' : '#1f2438',
+                color: currentPage === totalPages ? '#6b7280' : '#ffffff',
+                border: '1px solid #374151',
+                borderRadius: '6px',
+                padding: '6px 12px',
+                cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+              }}
+            >
+              Next
+            </button>
+          </div>
         </div>
       </div>
     </div>

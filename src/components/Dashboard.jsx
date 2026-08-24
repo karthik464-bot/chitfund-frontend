@@ -1,4 +1,17 @@
 import React, { useState, useEffect } from 'react';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+} from 'recharts';
 import API from '../api';
 
 export default function Dashboard() {
@@ -8,7 +21,6 @@ export default function Dashboard() {
   const [auctions, setAuctions] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Modal State for Individual Drill-down
   const [selectedMember, setSelectedMember] = useState(null);
 
   useEffect(() => {
@@ -34,14 +46,43 @@ export default function Dashboard() {
     }
   };
 
-  // Metrics
+  // Basic Metrics
   const totalChitValue = groups.reduce((sum, g) => sum + (parseFloat(g.chitAmount) || 0), 0);
   const totalCollections = collections.reduce(
     (sum, c) => sum + (parseFloat(c.amount ?? c.installmentAmount) || 0),
     0
   );
 
-  // Helper: Get member-specific summary
+  // Analytics Processing: Monthly Trend Data for Bar Chart
+  const getMonthlyTrendData = () => {
+    const monthsMap = {};
+    collections.forEach((c) => {
+      const dateStr = c.paymentDate || '2026-08-01';
+      const monthKey = dateStr.substring(0, 7); // "YYYY-MM"
+      const amt = parseFloat(c.amount ?? c.installmentAmount) || 0;
+      monthsMap[monthKey] = (monthsMap[monthKey] || 0) + amt;
+    });
+
+    const chartData = Object.keys(monthsMap)
+      .sort()
+      .map((mKey) => ({
+        month: mKey,
+        Collected: monthsMap[mKey],
+      }));
+
+    return chartData.length > 0 ? chartData : [{ month: 'Current', Collected: totalCollections }];
+  };
+
+  // Analytics Processing: Pending vs Collected Data for Pie Chart
+  const estimatedTarget = totalChitValue > 0 ? totalChitValue : totalCollections * 1.5;
+  const pendingAmount = Math.max(0, estimatedTarget - totalCollections);
+
+  const pieData = [
+    { name: 'Collected', value: totalCollections },
+    { name: 'Pending Target', value: pendingAmount },
+  ];
+  const PIE_COLORS = ['#10b981', '#f59e0b'];
+
   const getMemberDetails = (memberId) => {
     const memberCols = collections.filter((c) => c.member?.id === memberId);
     const memberAucs = auctions.filter((a) => a.winnerMember?.id === memberId);
@@ -60,16 +101,16 @@ export default function Dashboard() {
   };
 
   if (loading) {
-    return <div style={{ color: '#9ca3af', padding: '20px' }}>Loading Dashboard...</div>;
+    return <div style={{ color: '#9ca3af', padding: '20px' }}>Loading Visual Analytics...</div>;
   }
 
   return (
     <div style={{ color: '#ffffff', fontFamily: 'Inter, sans-serif' }}>
       <h2 style={{ marginBottom: '24px', fontSize: '24px', fontWeight: '700' }}>
-        Dashboard Overview
+        Dashboard & Visual Analytics
       </h2>
 
-      {/* Top Metric Cards */}
+      {/* Metric Cards */}
       <div
         style={{
           display: 'grid',
@@ -99,21 +140,72 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Member Payments Summary Section */}
+      {/* VISUAL ANALYTICS SECTION */}
       <div
         style={{
-          backgroundColor: '#131629',
-          border: '1px solid #1e2238',
-          borderRadius: '12px',
-          padding: '24px',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+          gap: '24px',
+          marginBottom: '32px',
         }}
       >
+        {/* Monthly Collection Progress Bar Chart */}
+        <div style={chartContainerStyle}>
+          <h3 style={chartTitleStyle}>Monthly Collection Progress</h3>
+          <div style={{ width: '100%', height: 260 }}>
+            <ResponsiveContainer>
+              <BarChart data={getMonthlyTrendData()}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#282c45" />
+                <XAxis dataKey="month" stroke="#9ca3af" />
+                <YAxis stroke="#9ca3af" />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#131629', borderColor: '#282c45', color: '#fff' }}
+                />
+                <Legend />
+                <Bar dataKey="Collected" fill="#8b5cf6" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Collection Target Pie Chart */}
+        <div style={chartContainerStyle}>
+          <h3 style={chartTitleStyle}>Collection Status vs Target</h3>
+          <div style={{ width: '100%', height: 260 }}>
+            <ResponsiveContainer>
+              <PieChart>
+                <Pie
+                  data={pieData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={90}
+                  paddingAngle={5}
+                  dataKey="value"
+                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                >
+                  {pieData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#131629', borderColor: '#282c45', color: '#fff' }}
+                />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      {/* Member Payments Summary Table */}
+      <div style={chartContainerStyle}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
           <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#a78bfa', margin: 0 }}>
             Member Contribution Summary
           </h3>
           <span style={{ fontSize: '12px', color: '#9ca3af' }}>
-            Click on any member's name to view full statement
+            Click any member name to view statement
           </span>
         </div>
 
@@ -140,14 +232,7 @@ export default function Dashboard() {
                 members.map((m) => {
                   const details = getMemberDetails(m.id);
                   return (
-                    <tr
-                      key={m.id}
-                      style={{
-                        borderBottom: '1px solid #1e2238',
-                        fontSize: '14px',
-                        transition: 'background 0.2s',
-                      }}
-                    >
+                    <tr key={m.id} style={{ borderBottom: '1px solid #1e2238', fontSize: '14px' }}>
                       <td style={{ padding: '12px' }}>
                         <button
                           onClick={() => setSelectedMember(m)}
@@ -198,7 +283,7 @@ export default function Dashboard() {
                             cursor: 'pointer',
                           }}
                         >
-                          View Records
+                          View Statement
                         </button>
                       </td>
                     </tr>
@@ -210,7 +295,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* INDIVIDUAL MEMBER DRILL-DOWN MODAL */}
+      {/* Member Statement Modal */}
       {selectedMember && (
         <MemberDetailModal
           member={selectedMember}
@@ -222,7 +307,6 @@ export default function Dashboard() {
   );
 }
 
-// Modal Component for Individual Records
 function MemberDetailModal({ member, details, onClose }) {
   return (
     <div
@@ -251,10 +335,8 @@ function MemberDetailModal({ member, details, onClose }) {
           maxHeight: '90vh',
           overflowY: 'auto',
           padding: '28px',
-          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)',
         }}
       >
-        {/* Modal Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
           <div>
             <h2 style={{ margin: 0, fontSize: '22px', color: '#ffffff' }}>{member.name}'s Statement</h2>
@@ -279,7 +361,6 @@ function MemberDetailModal({ member, details, onClose }) {
           </button>
         </div>
 
-        {/* Modal Summary Cards */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
           <div style={{ background: '#0f1120', padding: '16px', borderRadius: '10px', border: '1px solid #282c45' }}>
             <span style={{ fontSize: '12px', color: '#9ca3af' }}>Total Amount Paid</span>
@@ -295,7 +376,6 @@ function MemberDetailModal({ member, details, onClose }) {
           </div>
         </div>
 
-        {/* Collection History Table */}
         <h4 style={{ color: '#a78bfa', marginBottom: '12px' }}>Payment History</h4>
         <div className="table-responsive" style={{ marginBottom: '24px' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
@@ -336,41 +416,6 @@ function MemberDetailModal({ member, details, onClose }) {
           </table>
         </div>
 
-        {/* Auction History Table */}
-        <h4 style={{ color: '#a78bfa', marginBottom: '12px' }}>Auction Winnings</h4>
-        <div className="table-responsive">
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid #282c45', color: '#9ca3af', fontSize: '12px' }}>
-                <th style={{ padding: '8px' }}>DATE</th>
-                <th style={{ padding: '8px' }}>GROUP</th>
-                <th style={{ padding: '8px' }}>WINNING BID</th>
-                <th style={{ padding: '8px' }}>DIVIDEND</th>
-              </tr>
-            </thead>
-            <tbody>
-              {details.auctions.length === 0 ? (
-                <tr>
-                  <td colSpan="4" style={{ padding: '12px', textAlign: 'center', color: '#9ca3af' }}>
-                    No auctions won by this member yet.
-                  </td>
-                </tr>
-              ) : (
-                details.auctions.map((auc) => (
-                  <tr key={auc.id} style={{ borderBottom: '1px solid #1e2238', fontSize: '13px' }}>
-                    <td style={{ padding: '8px' }}>{auc.auctionDate || 'N/A'}</td>
-                    <td style={{ padding: '8px' }}>{auc.chitGroup?.groupName || 'N/A'}</td>
-                    <td style={{ padding: '8px' }}>₹{Number(auc.winningBidAmount || 0).toLocaleString()}</td>
-                    <td style={{ padding: '8px', color: '#00e676', fontWeight: 'bold' }}>
-                      ₹{Number(auc.dividendPerMember || 0).toLocaleString()}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-
         <div style={{ textAlign: 'right', marginTop: '24px' }}>
           <button
             onClick={onClose}
@@ -392,7 +437,6 @@ function MemberDetailModal({ member, details, onClose }) {
   );
 }
 
-// Inline Styles Helper
 const cardStyle = (borderColor) => ({
   backgroundColor: '#131629',
   border: '1px solid #1e2238',
@@ -414,4 +458,19 @@ const cardValueStyle = {
   fontWeight: '700',
   margin: 0,
   color: '#ffffff',
+};
+
+const chartContainerStyle = {
+  backgroundColor: '#131629',
+  border: '1px solid #1e2238',
+  borderRadius: '12px',
+  padding: '24px',
+};
+
+const chartTitleStyle = {
+  fontSize: '16px',
+  fontWeight: '600',
+  color: '#a78bfa',
+  marginTop: 0,
+  marginBottom: '16px',
 };
