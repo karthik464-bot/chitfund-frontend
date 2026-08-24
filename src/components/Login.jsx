@@ -1,30 +1,46 @@
 import React, { useState } from 'react';
-import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
+import API from '../api';
 
-export default function Login({ onLogin }) {
+export default function Login({ onLogin, onLoginSuccess }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const navigate = useNavigate();
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
 
     try {
-      const res = await axios.post('http://localhost:8080/api/auth/login', {
-        username,
-        password,
-      });
+      const res = await API.post('/auth/login', { username, password });
+      const { token, role, memberId } = res.data;
 
-      localStorage.setItem('token', res.data.token);
-      localStorage.setItem('role', res.data.role);
-      localStorage.setItem('memberId', res.data.memberId || '');
+      // Store auth session keys
+      localStorage.setItem('token', token);
+      localStorage.setItem('role', role);
+      localStorage.setItem('userRole', role);
+      if (memberId) {
+        localStorage.setItem('memberId', memberId);
+      }
 
-      if (onLogin) {
-        onLogin(res.data);
+      // Trigger parent handler callback
+      const loginCallback = onLoginSuccess || onLogin;
+      if (loginCallback) {
+        loginCallback(res.data);
+      }
+
+      // Role-based route redirection
+      const isMember = role === 'ROLE_MEMBER' || role === 'MEMBER';
+      if (isMember) {
+        navigate('/member-portal');
+      } else {
+        navigate('/dashboard');
       }
     } catch (err) {
-      setError(err.response?.data?.message || 'Invalid username or password!');
+      console.error('Login error:', err);
+      const msg = err.response?.data?.message || 'Invalid username or password!';
+      setError(msg);
     }
   };
 
@@ -58,7 +74,9 @@ export default function Login({ onLogin }) {
           />
         </div>
 
-        <button type="submit" className="btn-primary">Sign In</button>
+        <button type="submit" className="btn-primary">
+          Sign In
+        </button>
       </form>
     </div>
   );

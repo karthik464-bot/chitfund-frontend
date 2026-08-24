@@ -41,6 +41,24 @@ export default function AuctionManagement() {
     }
   };
 
+  // Identify members who have already won an auction in the selected Chit Group
+  const previousWinnerIds = auctions
+    .filter((auc) => auc.chitGroup?.id === parseInt(selectedGroupId, 10))
+    .map((auc) => auc.winnerMember?.id);
+
+  // Filter out previous winners so a member can only win ONCE per group
+  const eligibleMembers = members.filter(
+    (m) => !previousWinnerIds.includes(m.id)
+  );
+
+  // Reset winner selection when group changes if previous winner is no longer eligible
+  const handleGroupChange = (e) => {
+    const newGroupId = e.target.value;
+    setSelectedGroupId(newGroupId);
+    setSelectedWinnerId('');
+  };
+
+  // Live Auto-Calculation preview
   useEffect(() => {
     if (selectedGroupId && winningBidAmount) {
       const group = groups.find((g) => g.id === parseInt(selectedGroupId, 10));
@@ -73,10 +91,19 @@ export default function AuctionManagement() {
       return;
     }
 
+    const winnerIdNum = parseInt(selectedWinnerId, 10);
+    if (previousWinnerIds.includes(winnerIdNum)) {
+      setMessage({
+        type: 'error',
+        text: 'This member has already won an auction in this Chit Group! A member can win only once per group.',
+      });
+      return;
+    }
+
     try {
       const payload = {
         chitGroup: { id: parseInt(selectedGroupId, 10) },
-        winnerMember: { id: parseInt(selectedWinnerId, 10) },
+        winnerMember: { id: winnerIdNum },
         winningBidAmount: parseFloat(winningBidAmount),
         auctionDate,
       };
@@ -90,6 +117,25 @@ export default function AuctionManagement() {
     } catch (err) {
       console.error('Save auction error:', err);
       setMessage({ type: 'error', text: 'Failed to save auction record.' });
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this auction record?')) {
+      return;
+    }
+
+    try {
+      await API.delete(`/auctions/${id}`);
+      setMessage({ type: 'success', text: 'Auction record deleted successfully!' });
+      fetchInitialData();
+    } catch (err) {
+      console.error('Delete auction error:', err);
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        setMessage({ type: 'error', text: 'Unauthorized. Please log in as Admin.' });
+      } else {
+        setMessage({ type: 'error', text: 'Failed to delete auction record.' });
+      }
     }
   };
 
@@ -128,6 +174,7 @@ export default function AuctionManagement() {
       <h2>Auction & Dividend Engine</h2>
       {message.text && <div className={`alert ${message.type}`}>{message.text}</div>}
 
+      {/* Record New Auction Form Card */}
       <form onSubmit={handleSaveAuction} className="form-card">
         <h3>Record New Auction</h3>
         <div className="form-grid">
@@ -136,7 +183,7 @@ export default function AuctionManagement() {
             <select
               style={fieldStyle}
               value={selectedGroupId}
-              onChange={(e) => setSelectedGroupId(e.target.value)}
+              onChange={handleGroupChange}
               required
             >
               <option value="">-- Select Group --</option>
@@ -155,9 +202,16 @@ export default function AuctionManagement() {
               value={selectedWinnerId}
               onChange={(e) => setSelectedWinnerId(e.target.value)}
               required
+              disabled={!selectedGroupId}
             >
-              <option value="">-- Select Winner --</option>
-              {members.map((m) => (
+              <option value="">
+                {!selectedGroupId
+                  ? '-- Select Group First --'
+                  : eligibleMembers.length === 0
+                  ? '-- All Members Have Won --'
+                  : '-- Select Winner --'}
+              </option>
+              {eligibleMembers.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name}
                 </option>
@@ -189,6 +243,7 @@ export default function AuctionManagement() {
           </div>
         </div>
 
+        {/* Live Calculation Preview Banner */}
         {selectedGroupId && winningBidAmount && (
           <div
             style={{
@@ -240,6 +295,7 @@ export default function AuctionManagement() {
         </div>
       </form>
 
+      {/* Past Auction History Section */}
       <div style={{ marginTop: '30px' }}>
         <h3>Past Auction History</h3>
         <div className="search-bar" style={{ marginTop: '10px' }}>
@@ -261,12 +317,13 @@ export default function AuctionManagement() {
                 <th>Dividend / Member</th>
                 <th>Next Installment</th>
                 <th>Date</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {filteredAuctions.length === 0 ? (
                 <tr>
-                  <td colSpan="6" style={{ textAlign: 'center', color: '#9ca3af' }}>
+                  <td colSpan="7" style={{ textAlign: 'center', color: '#9ca3af' }}>
                     No auction records found.
                   </td>
                 </tr>
@@ -283,6 +340,14 @@ export default function AuctionManagement() {
                       ₹{auc.nextInstallmentAmount ? auc.nextInstallmentAmount.toLocaleString() : 0}
                     </td>
                     <td>{auc.auctionDate || 'N/A'}</td>
+                    <td>
+                      <button
+                        onClick={() => handleDelete(auc.id)}
+                        className="btn-delete"
+                      >
+                        Delete
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}

@@ -64,36 +64,64 @@ export default function CollectionManagement() {
     e.preventDefault();
     setMessage({ type: '', text: '' });
 
-    if (!selectedMemberId || !selectedGroupId || !amount) {
-      setMessage({ type: 'error', text: 'Please fill out Member, Group, and Amount.' });
+    if (!selectedMemberId || !selectedGroupId || !amount || !paymentDate) {
+      setMessage({ type: 'error', text: 'Please fill out all required fields.' });
       return;
     }
 
-    try {
-      const payload = {
-        member: { id: parseInt(selectedMemberId, 10) },
-        chitGroup: { id: parseInt(selectedGroupId, 10) },
-        amount: parseFloat(amount),
-        paymentDate,
-        paymentMode,
-        status: 'PAID',
-      };
+    const memberIdNum = parseInt(selectedMemberId, 10);
+    const groupIdNum = parseInt(selectedGroupId, 10);
+    const numericAmount = parseFloat(amount);
 
+    const payload = {
+      member: { id: memberIdNum },
+      chitGroup: { id: groupIdNum },
+      group: { id: groupIdNum },
+      amount: numericAmount,
+      installmentAmount: numericAmount,
+      paymentDate: paymentDate,
+      paymentMode: paymentMode,
+      status: 'PAID',
+      paymentStatus: 'PAID'
+    };
+
+    try {
       await API.post('/collections', payload);
-      setMessage({ type: 'success', text: 'Payment collected and receipt generated!' });
+      setMessage({ type: 'success', text: 'Payment collected successfully!' });
       setAmount('');
       setSelectedMemberId('');
       setSelectedGroupId('');
       fetchData();
     } catch (err) {
-      console.error('Record collection error:', err);
-      setMessage({ type: 'error', text: 'Failed to record collection.' });
+      console.error('Record collection error:', err.response || err);
+      const serverError =
+        err.response?.data?.message ||
+        err.response?.data?.error ||
+        (typeof err.response?.data === 'string' ? err.response.data : null) ||
+        'Failed to record collection.';
+
+      setMessage({ type: 'error', text: `Backend Error: ${serverError}` });
+    }
+  };
+
+  const handleDeleteCollection = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this collection record?')) {
+      return;
+    }
+
+    try {
+      await API.delete(`/collections/${id}`);
+      setMessage({ type: 'success', text: 'Collection record deleted successfully!' });
+      fetchData();
+    } catch (err) {
+      console.error('Delete collection error:', err);
+      setMessage({ type: 'error', text: 'Failed to delete collection record.' });
     }
   };
 
   const filteredCollections = collections.filter((col) => {
     const memberName = col.member?.name?.toLowerCase() || '';
-    const groupName = col.chitGroup?.groupName?.toLowerCase() || '';
+    const groupName = col.chitGroup?.groupName?.toLowerCase() || col.group?.groupName?.toLowerCase() || '';
     const term = search.toLowerCase();
     return memberName.includes(term) || groupName.includes(term);
   });
@@ -128,7 +156,7 @@ export default function CollectionManagement() {
 
       <form onSubmit={handleRecordCollection} className="form-card">
         <h3>Record Monthly Installment Payment</h3>
-        <div className="form-grid">
+        <div className="form-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
           <div className="form-group">
             <label style={labelStyle}>Select Member *</label>
             <select
@@ -189,9 +217,20 @@ export default function CollectionManagement() {
               <option value="CHEQUE">CHEQUE</option>
             </select>
           </div>
+
+          <div className="form-group">
+            <label style={labelStyle}>Payment Date *</label>
+            <input
+              type="date"
+              style={fieldStyle}
+              value={paymentDate}
+              onChange={(e) => setPaymentDate(e.target.value)}
+              required
+            />
+          </div>
         </div>
 
-        <div className="btn-group">
+        <div className="btn-group" style={{ marginTop: '20px' }}>
           <button type="submit" className="btn-primary">
             Record Payment & Issue Receipt
           </button>
@@ -219,43 +258,56 @@ export default function CollectionManagement() {
                 <th>Payment Mode</th>
                 <th>Payment Date</th>
                 <th>Status</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {filteredCollections.length === 0 ? (
                 <tr>
-                  <td colSpan="6" style={{ textAlign: 'center', color: '#9ca3af' }}>
+                  <td colSpan="7" style={{ textAlign: 'center', color: '#9ca3af' }}>
                     No collection records found.
                   </td>
                 </tr>
               ) : (
-                filteredCollections.map((col) => (
-                  <tr key={col.id}>
-                    <td>{col.member?.name || 'N/A'}</td>
-                    <td>{col.chitGroup?.groupName || 'N/A'}</td>
-                    <td style={{ color: '#00e676', fontWeight: 'bold' }}>
-                      ₹{col.amount ? col.amount.toLocaleString() : 0}
-                    </td>
-                    <td>{col.paymentMode || 'CASH'}</td>
-                    <td>{col.paymentDate || 'N/A'}</td>
-                    <td>
-                      <span
-                        style={{
-                          background: '#10b98122',
-                          color: '#34d399',
-                          border: '1px solid #10b98188',
-                          padding: '4px 8px',
-                          borderRadius: '6px',
-                          fontSize: '11px',
-                          fontWeight: '700',
-                          display: 'inline-block',
-                        }}
-                      >
-                        {col.status || 'PAID'}
-                      </span>
-                    </td>
-                  </tr>
-                ))
+                filteredCollections.map((col) => {
+                  const displayAmount = col.amount ?? col.installmentAmount ?? 0;
+                  const displayStatus = col.status || col.paymentStatus || 'PAID';
+                  return (
+                    <tr key={col.id}>
+                      <td>{col.member?.name || 'N/A'}</td>
+                      <td>{col.chitGroup?.groupName || col.group?.groupName || 'N/A'}</td>
+                      <td style={{ color: '#00e676', fontWeight: 'bold' }}>
+                        ₹{Number(displayAmount).toLocaleString()}
+                      </td>
+                      <td>{col.paymentMode || 'CASH'}</td>
+                      <td>{col.paymentDate || 'N/A'}</td>
+                      <td>
+                        <span
+                          style={{
+                            background: '#10b98122',
+                            color: '#34d399',
+                            border: '1px solid #10b98188',
+                            padding: '4px 8px',
+                            borderRadius: '6px',
+                            fontSize: '11px',
+                            fontWeight: '700',
+                            display: 'inline-block',
+                          }}
+                        >
+                          {displayStatus}
+                        </span>
+                      </td>
+                      <td>
+                        <button
+                          onClick={() => handleDeleteCollection(col.id)}
+                          className="btn-delete"
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
