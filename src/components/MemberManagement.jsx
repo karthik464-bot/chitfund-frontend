@@ -35,11 +35,15 @@ export default function MemberManagement() {
       setGroups(grpRes.data || []);
     } catch (err) {
       console.error('Fetch error in Members module:', err);
-      setMessage({ type: 'error', text: 'Failed to load members or chit groups data.' });
+      let errorMsg = 'Failed to load members or chit groups data.';
+      if (err.response?.status === 403) {
+        errorMsg = 'Session expired or unauthorized (403). Please log out and log back in.';
+      }
+      setMessage({ type: 'error', text: errorMsg });
     }
   };
 
-  // Comprehensive entity field getters for mobile and email
+  // Entity field getters
   const getMobileNumber = (m) =>
     m.phone || m.mobile || m.phoneNumber || m.mobileNumber || m.phoneNo || m.contactNo || 'N/A';
 
@@ -78,13 +82,18 @@ export default function MemberManagement() {
       fetchData();
     } catch (err) {
       console.error('Register member error:', err);
-      const serverMsg = err.response?.data?.message || 'Failed to register member.';
+      let serverMsg = err.response?.data?.message || 'Failed to register member.';
+      if (err.response?.status === 403) {
+        serverMsg = 'Access Denied (403): You do not have permission or your token has expired.';
+      }
       setMessage({ type: 'error', text: serverMsg });
     }
   };
 
   const handleAssignGroup = async (e) => {
     e.preventDefault();
+    setMessage({ type: '', text: '' });
+
     if (!assignMemberId || !assignGroupId) {
       setMessage({ type: 'error', text: 'Please select both a Member and a Chit Group to assign.' });
       return;
@@ -98,7 +107,10 @@ export default function MemberManagement() {
       fetchData();
     } catch (err) {
       console.error('Assign group error:', err);
-      const serverMsg = err.response?.data?.message || 'Failed to assign group to member.';
+      let serverMsg = err.response?.data?.message || 'Failed to assign group to member.';
+      if (err.response?.status === 403) {
+        serverMsg = 'Access Denied (403): Your user role lacks permission to assign groups, or your session has expired. Please log out and re-login as an Admin.';
+      }
       setMessage({ type: 'error', text: serverMsg });
     }
   };
@@ -112,7 +124,11 @@ export default function MemberManagement() {
       fetchData();
     } catch (err) {
       console.error('Delete member error:', err);
-      setMessage({ type: 'error', text: 'Failed to delete member.' });
+      let serverMsg = 'Failed to delete member.';
+      if (err.response?.status === 403) {
+        serverMsg = 'Access Denied (403): Insufficient privileges to delete members.';
+      }
+      setMessage({ type: 'error', text: serverMsg });
     }
   };
 
@@ -442,7 +458,7 @@ export default function MemberManagement() {
           </table>
         </div>
 
-        {/* Clean, Non-Overlapping Pagination Bar */}
+        {/* Pagination Bar */}
         <div
           style={{
             display: 'flex',

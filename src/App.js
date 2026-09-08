@@ -1,37 +1,48 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, Navigate, Link, useNavigate, useLocation } from 'react-router-dom';
+import { Routes, Route, useNavigate, Navigate } from 'react-router-dom';
+
+// Component Imports
+import Sidebar from './components/Sidebar';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import ChitGroupManagement from './components/ChitGroupManagement';
 import MemberManagement from './components/MemberManagement';
+import AgentManagement from './components/AgentManagement';
 import AuctionManagement from './components/AuctionManagement';
 import CollectionManagement from './components/CollectionManagement';
 import MemberPortal from './components/MemberPortal';
 import './App.css';
 
 export default function App() {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [token, setToken] = useState(localStorage.getItem('token'));
+  const [userRole, setUserRole] = useState(
+    localStorage.getItem('userRole') || localStorage.getItem('role')
+  );
+  const [memberId, setMemberId] = useState(localStorage.getItem('memberId'));
   const navigate = useNavigate();
-  const location = useLocation();
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    const role = localStorage.getItem('role') || localStorage.getItem('userRole');
-    const memberId = localStorage.getItem('memberId');
+    const handleStorageChange = () => {
+      setToken(localStorage.getItem('token'));
+      setUserRole(localStorage.getItem('userRole') || localStorage.getItem('role'));
+      setMemberId(localStorage.getItem('memberId'));
+    };
 
-    if (token && role) {
-      setUser({ token, role, memberId });
-    }
-    setLoading(false);
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  const handleLoginSuccess = (userData) => {
-    const role = userData.role;
-    setUser(userData);
+  const handleLoginSuccess = (data) => {
+    const role = data.role;
+    setToken(data.token);
+    setUserRole(role);
+    if (data.memberId) setMemberId(data.memberId);
 
+    // Dynamic routing by role
     if (role === 'ROLE_MEMBER' || role === 'MEMBER') {
       navigate('/member-portal');
+    } else if (role === 'ROLE_AGENT' || role === 'AGENT') {
+      navigate('/collections');
     } else {
       navigate('/dashboard');
     }
@@ -39,14 +50,14 @@ export default function App() {
 
   const handleLogout = () => {
     localStorage.clear();
-    setUser(null);
+    setToken(null);
+    setUserRole(null);
+    setMemberId(null);
     navigate('/login');
   };
 
-  if (loading) return null;
-
-  // 1. Unauthenticated -> Render Login Route
-  if (!user) {
+  // 1. Unauthenticated User -> Login Route
+  if (!token) {
     return (
       <Routes>
         <Route
@@ -58,96 +69,53 @@ export default function App() {
     );
   }
 
-  const isMember = user.role === 'ROLE_MEMBER' || user.role === 'MEMBER';
+  const isAdmin = userRole === 'ROLE_ADMIN' || userRole === 'ADMIN';
+  const isAgent = userRole === 'ROLE_AGENT' || userRole === 'AGENT';
+  const isMember = userRole === 'ROLE_MEMBER' || userRole === 'MEMBER';
 
-  // 2. Member User -> Render Member Portal exclusively
+  // 2. Member Role -> Exclusive Member Portal
   if (isMember) {
     return (
       <Routes>
-        <Route path="/member-portal" element={<MemberPortal user={user} onLogout={handleLogout} />} />
+        <Route
+          path="/member-portal"
+          element={
+            <MemberPortal
+              user={{ token, role: userRole, memberId }}
+              onLogout={handleLogout}
+            />
+          }
+        />
         <Route path="*" element={<Navigate to="/member-portal" replace />} />
       </Routes>
     );
   }
 
-  const navItems = [
-    { label: 'Dashboard', path: '/dashboard' },
-    { label: 'Chit Groups', path: '/groups' },
-    { label: 'Members', path: '/members' },
-    { label: 'Auctions', path: '/auctions' },
-    { label: 'Collections', path: '/collections' },
-  ];
-
-  // 3. Admin User -> Render Full Management Portal
+  // 3. Admin & Agent Roles -> Main Viewport with Sidebar
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#0b0e1b', color: '#ffffff', fontFamily: 'Inter, system-ui, sans-serif' }}>
-      {/* Sidebar Navigation */}
-      <aside style={{ width: '260px', backgroundColor: '#131629', padding: '28px 20px', display: 'flex', flexDirection: 'column', borderRight: '1px solid #1e2238' }}>
-        <h2 style={{ fontSize: '18px', fontWeight: '700', color: '#a78bfa', marginBottom: '36px', lineHeight: '1.3' }}>
-          Chit Fund Management<br />System
-        </h2>
+    <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#0b0d19' }}>
+      <Sidebar onLogout={handleLogout} />
 
-        <nav style={{ flex: 1 }}>
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {navItems.map((item) => {
-              const isActive = location.pathname === item.path;
-              return (
-                <li key={item.path}>
-                  <Link
-                    to={item.path}
-                    style={{
-                      display: 'block',
-                      padding: '12px 18px',
-                      borderRadius: '10px',
-                      fontSize: '14px',
-                      fontWeight: isActive ? '600' : '500',
-                      textDecoration: 'none',
-                      color: isActive ? '#ffffff' : '#9ca3af',
-                      background: isActive
-                        ? 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)'
-                        : 'transparent',
-                      transition: 'all 0.2s ease',
-                      boxShadow: isActive ? '0 4px 12px rgba(139, 92, 246, 0.35)' : 'none',
-                    }}
-                  >
-                    {item.label}
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </nav>
-
-        <button
-          onClick={handleLogout}
-          style={{
-            marginTop: 'auto',
-            backgroundColor: '#1f2438',
-            color: '#ef4444',
-            border: '1px solid #374151',
-            borderRadius: '10px',
-            padding: '12px',
-            fontSize: '14px',
-            fontWeight: '600',
-            cursor: 'pointer',
-            textAlign: 'center',
-            width: '100%',
-            transition: 'background 0.2s ease',
-          }}
-        >
-          Logout
-        </button>
-      </aside>
-
-      {/* Main Viewport */}
       <main style={{ flex: 1, padding: '32px', overflowY: 'auto' }}>
         <Routes>
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/groups" element={<ChitGroupManagement />} />
-          <Route path="/members" element={<MemberManagement />} />
-          <Route path="/auctions" element={<AuctionManagement />} />
-          <Route path="/collections" element={<CollectionManagement />} />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          {isAdmin && (
+            <>
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/groups" element={<ChitGroupManagement />} />
+              <Route path="/members" element={<MemberManagement />} />
+              <Route path="/agent-management" element={<AgentManagement />} />
+              <Route path="/auctions" element={<AuctionManagement />} />
+              <Route path="/collections" element={<CollectionManagement />} />
+              <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            </>
+          )}
+
+          {isAgent && (
+            <>
+              <Route path="/collections" element={<CollectionManagement />} />
+              <Route path="*" element={<Navigate to="/collections" replace />} />
+            </>
+          )}
         </Routes>
       </main>
     </div>
