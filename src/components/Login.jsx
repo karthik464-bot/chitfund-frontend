@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import API from '../api';
 
 export default function Login({ onLogin, onLoginSuccess }) {
@@ -141,6 +141,12 @@ export default function Login({ onLogin, onLoginSuccess }) {
                 onChange={(e) => setPassword(e.target.value)}
                 required
               />
+            </div>
+
+            <div style={{ textAlign: 'right', marginTop: '-8px', marginBottom: '16px' }}>
+              <Link to="/forgot-password" style={{ color: '#a78bfa', fontSize: '12px', textDecoration: 'none' }}>
+                Forgot Password?
+              </Link>
             </div>
 
             <button

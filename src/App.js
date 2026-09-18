@@ -4,6 +4,7 @@ import { Routes, Route, useNavigate, Navigate } from 'react-router-dom';
 // Component Imports
 import Sidebar from './components/Sidebar';
 import Login from './components/Login';
+import ForgotPassword from './components/ForgotPassword';
 import Dashboard from './components/Dashboard';
 import ChitGroupManagement from './components/ChitGroupManagement';
 import MemberManagement from './components/MemberManagement';
@@ -56,7 +57,7 @@ export default function App() {
     navigate('/login');
   };
 
-  // 1. Unauthenticated User -> Login Route
+  // 1. Unauthenticated User -> Login & Forgot Password Routes
   if (!token) {
     return (
       <Routes>
@@ -64,6 +65,7 @@ export default function App() {
           path="/login"
           element={<Login onLogin={handleLoginSuccess} onLoginSuccess={handleLoginSuccess} />}
         />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     );
