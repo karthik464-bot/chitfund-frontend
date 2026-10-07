@@ -21,17 +21,24 @@ export default function Login({ onLogin, onLoginSuccess }) {
 
     try {
       const res = await API.post('/auth/login', { username, password });
-      const { token, role, memberId, userId } = res.data;
+      const { token, accessToken, refreshToken, role, memberId, userId } = res.data;
       
+      // Support both property names for access tokens
+      const finalAccessToken = accessToken || token;
+
       // Extract logged-in username from response or form input
       const activeUsername = res.data.username || username;
 
-      // Store complete auth session keys
-      localStorage.setItem('token', token);
+      // Store complete auth session keys (including refresh token)
+      localStorage.setItem('accessToken', finalAccessToken);
+      localStorage.setItem('token', finalAccessToken); // fallback key
+      if (refreshToken) {
+        localStorage.setItem('refreshToken', refreshToken);
+      }
       localStorage.setItem('role', role);
       localStorage.setItem('userRole', role);
       localStorage.setItem('username', activeUsername);
-      localStorage.setItem('user', activeUsername);
+      localStorage.setItem('user', JSON.stringify(res.data));
       
       if (memberId) localStorage.setItem('memberId', memberId);
       if (userId) localStorage.setItem('userId', userId);
@@ -112,7 +119,14 @@ export default function Login({ onLogin, onLoginSuccess }) {
         </p>
 
         {message.text && (
-          <div className={`alert ${message.type}`} style={{ marginBottom: '16px' }}>
+          <div 
+            style={{ 
+              marginBottom: '16px', 
+              color: message.type === 'error' ? '#f87171' : '#34d399', 
+              fontSize: '13px', 
+              textAlign: 'center' 
+            }}
+          >
             {message.text}
           </div>
         )}
