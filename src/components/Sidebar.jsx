@@ -31,6 +31,7 @@ export default function Sidebar({ onLogout }) {
       { label: 'Agent Management', path: '/agent-management', icon: '👔' },
       { label: 'Auctions', path: '/auctions', icon: '🔨' },
       { label: 'Collections', path: '/collections', icon: '💰' },
+      { label: 'Employees', path: '/employees', icon: '🏢' },
     ] : []),
     ...(isAgent ? [
       { label: 'Assigned Collections', path: '/collections', icon: '💰' },

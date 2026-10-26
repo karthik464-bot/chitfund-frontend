@@ -7,7 +7,6 @@ export default function Login({ onLogin, onLoginSuccess }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
 
-  // Agent Registration State
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -20,46 +19,44 @@ export default function Login({ onLogin, onLoginSuccess }) {
     setMessage({ type: '', text: '' });
 
     try {
-      const res = await API.post('/auth/login', { username, password });
-      const { token, accessToken, refreshToken, role, memberId, userId } = res.data;
-      
-      // Support both property names for access tokens
-      const finalAccessToken = accessToken || token;
+      console.log("Attempting login for:", username);
+      const res = await API.post('/auth/login', { email: username, password });
+      console.log("Raw Server Response Data:", res.data);
 
-      // Extract logged-in username from response or form input
-      const activeUsername = res.data.username || username;
+      const data = res.data || {};
+      const token = data.accessToken || data.token;
+      const role = data.role || (data.roles && data.roles[0]) || 'ROLE_USER';
 
-      // Store complete auth session keys (including refresh token)
-      localStorage.setItem('accessToken', finalAccessToken);
-      localStorage.setItem('token', finalAccessToken); // fallback key
-      if (refreshToken) {
-        localStorage.setItem('refreshToken', refreshToken);
+      if (token) {
+        localStorage.setItem('accessToken', token);
+        localStorage.setItem('token', token);
+        localStorage.setItem('role', role);
+        localStorage.setItem('userRole', role);
+        localStorage.setItem('username', data.username || username);
+        localStorage.setItem('user', JSON.stringify(data));
       }
-      localStorage.setItem('role', role);
-      localStorage.setItem('userRole', role);
-      localStorage.setItem('username', activeUsername);
-      localStorage.setItem('user', JSON.stringify(res.data));
-      
-      if (memberId) localStorage.setItem('memberId', memberId);
-      if (userId) localStorage.setItem('userId', userId);
 
-      // Trigger parent callback handler
       const loginCallback = onLoginSuccess || onLogin;
       if (loginCallback) {
-        loginCallback({ ...res.data, username: activeUsername });
+        try {
+          loginCallback(data);
+        } catch (cbErr) {
+          console.warn("Parent callback warning:", cbErr);
+        }
       }
 
-      // Role-based routing
+      console.log("Navigating based on role:", role);
+      // Role-based routing using window.location to guarantee page transition
       const isMember = role === 'ROLE_MEMBER' || role === 'MEMBER';
       if (isMember) {
-        navigate('/member-portal');
+        window.location.href = '/member-portal';
       } else {
-        navigate('/dashboard');
+        window.location.href = '/dashboard';
       }
     } catch (err) {
-      console.error('Login error:', err);
-      const serverMsg = err.response?.data?.message || 'Invalid username or password!';
-      setMessage({ type: 'error', text: serverMsg });
+      console.error('Detailed Login Error:', err);
+      const serverMsg = err.response?.data?.message || err.response?.data || err.message || 'Login failed!';
+      setMessage({ type: 'error', text: typeof serverMsg === 'string' ? serverMsg : 'Invalid email or password!' });
     }
   };
 
@@ -82,7 +79,7 @@ export default function Login({ onLogin, onLoginSuccess }) {
     } catch (err) {
       console.error('Agent registration error:', err);
       const serverMsg = err.response?.data?.message || 'Agent registration failed.';
-      setMessage({ type: 'error', text: serverMsg });
+      setMessage({ type: 'error', text: typeof serverMsg === 'string' ? serverMsg : 'Agent registration failed.' });
     }
   };
 
@@ -134,10 +131,10 @@ export default function Login({ onLogin, onLoginSuccess }) {
         {!isRegistering ? (
           <form onSubmit={handleLogin}>
             <div>
-              <label style={labelStyle}>Username *</label>
+              <label style={labelStyle}>Email / Username *</label>
               <input
                 type="text"
-                placeholder="Enter username"
+                placeholder="Enter email or username"
                 style={fieldStyle}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}

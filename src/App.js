@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, useNavigate, Navigate } from 'react-router-dom';
 
-// Component Imports
+// Component Imports (ensure these match default exports)
 import Sidebar from './components/Sidebar';
 import Login from './components/Login';
 import ForgotPassword from './components/ForgotPassword';
@@ -12,10 +12,13 @@ import AgentManagement from './components/AgentManagement';
 import AuctionManagement from './components/AuctionManagement';
 import CollectionManagement from './components/CollectionManagement';
 import MemberPortal from './components/MemberPortal';
+import EmployeeManagement from './components/EmployeeManagement';
 import './App.css';
 
 export default function App() {
-  const [token, setToken] = useState(localStorage.getItem('token'));
+  const [token, setToken] = useState(
+    localStorage.getItem('token') || localStorage.getItem('accessToken')
+  );
   const [userRole, setUserRole] = useState(
     localStorage.getItem('userRole') || localStorage.getItem('role')
   );
@@ -24,7 +27,7 @@ export default function App() {
 
   useEffect(() => {
     const handleStorageChange = () => {
-      setToken(localStorage.getItem('token'));
+      setToken(localStorage.getItem('token') || localStorage.getItem('accessToken'));
       setUserRole(localStorage.getItem('userRole') || localStorage.getItem('role'));
       setMemberId(localStorage.getItem('memberId'));
     };
@@ -35,17 +38,18 @@ export default function App() {
 
   const handleLoginSuccess = (data) => {
     const role = data.role;
-    setToken(data.token);
+    const authToken = data.accessToken || data.token;
+    setToken(authToken);
     setUserRole(role);
     if (data.memberId) setMemberId(data.memberId);
 
     // Dynamic routing by role
     if (role === 'ROLE_MEMBER' || role === 'MEMBER') {
-      navigate('/member-portal');
+      window.location.href = '/member-portal';
     } else if (role === 'ROLE_AGENT' || role === 'AGENT') {
-      navigate('/collections');
+      window.location.href = '/collections';
     } else {
-      navigate('/dashboard');
+      window.location.href = '/dashboard';
     }
   };
 
@@ -54,7 +58,7 @@ export default function App() {
     setToken(null);
     setUserRole(null);
     setMemberId(null);
-    navigate('/login');
+    window.location.href = '/login';
   };
 
   // 1. Unauthenticated User -> Login & Forgot Password Routes
@@ -73,7 +77,11 @@ export default function App() {
 
   const isAdmin = userRole === 'ROLE_ADMIN' || userRole === 'ADMIN';
   const isAgent = userRole === 'ROLE_AGENT' || userRole === 'AGENT';
-  const isMember = userRole === 'ROLE_MEMBER' || userRole === 'MEMBER';
+  const isMember = userRole === 'ROLE_MEMBER' || roleMatch(userRole, 'MEMBER');
+
+  function roleMatch(r, target) {
+    return r && r.toUpperCase().includes(target);
+  }
 
   // 2. Member Role -> Exclusive Member Portal
   if (isMember) {
@@ -108,6 +116,7 @@ export default function App() {
               <Route path="/agent-management" element={<AgentManagement />} />
               <Route path="/auctions" element={<AuctionManagement />} />
               <Route path="/collections" element={<CollectionManagement />} />
+              <Route path="/employees" element={<EmployeeManagement />} />
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </>
           )}

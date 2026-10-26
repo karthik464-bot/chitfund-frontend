@@ -62,7 +62,7 @@ api.interceptors.response.use(
                     return Promise.reject(err);
                 }
 
-                // Call refresh token endpoint
+                // Call refresh token endpoint using global axios to avoid interceptor loops
                 const rs = await axios.post('http://localhost:8080/api/auth/refreshtoken', {
                     refreshToken: refreshToken,
                 });
